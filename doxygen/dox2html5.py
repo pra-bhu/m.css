@@ -2057,6 +2057,23 @@ def parse_define(state: State, element: ET.Element):
         return define
     return None
 
+def _document_all_stuff(compounddef: ET.Element):
+    # TODO: this isn't helpful since the XML is already botched for everything
+    #   undocumented -- no links to these, the symbols won't appear in search,
+    #   it won't be exposed in the file/namespace/class list etc. So, in my
+    #   opinion, this feature is absolutely useless.
+    for i in compounddef.findall('.//briefdescription/..'):
+        brief = i.find('briefdescription')
+        if not brief and not i.find('detaileddescription'):
+            dim = ET.Element('{http://mcss.mosra.cz/doxygen/}span')
+            dim.attrib['{http://mcss.mosra.cz/doxygen/}class'] = 'm-text m-dim m-em'
+            # TODO: some other text? no text? make that configurable through
+            #   M_SHOW_UNDOCUMENTED?
+            dim.text = "No documentation present for this symbol."
+            para = ET.Element('para')
+            para.append(dim)
+            brief.append(para)
+
 def extract_metadata(state: State, xml):
     logging.debug("Extracting metadata from {}".format(os.path.basename(xml)))
 
@@ -2084,6 +2101,11 @@ def extract_metadata(state: State, xml):
     if compounddef.attrib['kind'] not in ['namespace', 'group', 'class', 'struct', 'union', 'dir', 'file', 'page']:
         logging.debug("No useful info in {}, skipping".format(os.path.basename(xml)))
         return
+
+    # In order to show also undocumented members, go through all empty
+    # <briefdescription>s and fill them with a generic text.
+    if state.doxyfile['M_SHOW_UNDOCUMENTED']:
+        _document_all_stuff(compounddef)
 
     compound = StateCompound()
     compound.id  = compounddef.attrib['id']
@@ -2391,6 +2413,11 @@ def parse_xml(state: State, xml: str):
         (compounddef.attrib['kind'] == 'namespace' and '@' in compounddef.find('compoundname').text)):
         logging.debug("{}: only private things, skipping".format(state.current))
         return None
+
+    # In order to show also undocumented members, go through all empty
+    # <briefdescription>s and fill them with a generic text.
+    if state.doxyfile['M_SHOW_UNDOCUMENTED']:
+        _document_all_stuff(compounddef)
 
     # Ignoring compounds w/o any description, except for pages and groups,
     # which are created explicitly
@@ -3291,7 +3318,8 @@ copy a link to the result using <span class="m-label m-dim">⌘</span>
 <span class="m-label m-dim">M</span> produces a Markdown link.</p>
 """],
         'M_SEARCH_BASE_URL': [''],
-        'M_SEARCH_EXTERNAL_URL': ['']
+        'M_SEARCH_EXTERNAL_URL': [''],
+        'M_SHOW_UNDOCUMENTED': ['NO']
     }
 
     # Defaults so we don't fail with minimal Doxyfiles and also that the
@@ -3409,7 +3437,8 @@ copy a link to the result using <span class="m-label m-dim">⌘</span>
               'SHOW_INCLUDE_FILES',
               'M_EXPAND_INNER_TYPES',
               'M_SEARCH_DISABLED',
-              'M_SEARCH_DOWNLOAD_BINARY']:
+              'M_SEARCH_DOWNLOAD_BINARY',
+              'M_SHOW_UNDOCUMENTED']:
         if i in config: state.doxyfile[i] = ' '.join(config[i]) == 'YES'
 
     # List values that we want. Drop empty lines.
